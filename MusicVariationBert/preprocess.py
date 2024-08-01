@@ -44,8 +44,8 @@ output_file = None
 lock_file = Lock()
 lock_write = Lock()
 lock_set = Lock()
-manager = Manager()
-midi_dict = manager.dict()
+# manager = Manager()
+# midi_dict = manager.dict()
 
 
 # (0 Measure, 1 Pos, 2 Program, 3 Pitch, 4 Duration, 5 Velocity, 6 TimeSig, 7 Tempo)
@@ -304,118 +304,118 @@ def get_hash(encoding):
     return midi_hash
 
 
-def F(file_name):
-    try_times = 10
-    midi_file = None
-    for _ in range(try_times):
-        try:
-            lock_file.acquire()
-            with data_zip.open(file_name) as f:
-                # this may fail due to unknown bug
-                midi_file = io.BytesIO(f.read())
-        except BaseException as e:
-            try_times -= 1
-            time.sleep(1)
-            if try_times == 0:
-                print('ERROR(READ): ' + file_name +
-                      ' ' + str(e) + '\n', end='')
-                return None
-        finally:
-            lock_file.release()
-    try:
-        with timeout(seconds=600):
-            midi_obj = miditoolkit.midi.parser.MidiFile(file=midi_file)
-        # check abnormal values in parse result
-        assert all(0 <= j.start < 2 ** 31 and 0 <= j.end < 2 **
-                   31 for i in midi_obj.instruments for j in i.notes), 'bad note time'
-        assert all(0 < j.numerator < 2 ** 31 and 0 < j.denominator < 2 **
-                   31 for j in midi_obj.time_signature_changes), 'bad time signature value'
-        assert 0 < midi_obj.ticks_per_beat < 2 ** 31, 'bad ticks per beat'
-    except BaseException as e:
-        print('ERROR(PARSE): ' + file_name + ' ' + str(e) + '\n', end='')
-        return None
-    midi_notes_count = sum(len(inst.notes) for inst in midi_obj.instruments)
-    if midi_notes_count == 0:
-        print('ERROR(BLANK): ' + file_name + '\n', end='')
-        return None
-    try:
-        e = MIDI_to_encoding(midi_obj)
-        if len(e) == 0:
-            print('ERROR(BLANK): ' + file_name + '\n', end='')
-            return None
-        if ts_filter:
-            allowed_ts = t2e(time_signature_reduce(4, 4))
-            if not all(i[6] == allowed_ts for i in e):
-                print('ERROR(TSFILT): ' + file_name + '\n', end='')
-                return None
-        if deduplicate:
-            duplicated = False
-            dup_file_name = ''
-            midi_hash = '0' * 32
-            try:
-                midi_hash = get_hash(e)
-            except BaseException as e:
-                pass
-            lock_set.acquire()
-            if midi_hash in midi_dict:
-                dup_file_name = midi_dict[midi_hash]
-                duplicated = True
-            else:
-                midi_dict[midi_hash] = file_name
-            lock_set.release()
-            if duplicated:
-                print('ERROR(DUPLICATED): ' + midi_hash + ' ' +
-                      file_name + ' == ' + dup_file_name + '\n', end='')
-                return None
-        output_str_list = []
-        sample_step = max(round(sample_len_max / sample_overlap_rate), 1)
-        for p in range(0 - random.randint(0, sample_len_max - 1), len(e), sample_step):
-            L = max(p, 0)
-            R = min(p + sample_len_max, len(e)) - 1
-            bar_index_list = [e[i][0]
-                              for i in range(L, R + 1) if e[i][0] is not None]
-            bar_index_min = 0
-            bar_index_max = 0
-            if len(bar_index_list) > 0:
-                bar_index_min = min(bar_index_list)
-                bar_index_max = max(bar_index_list)
-            offset_lower_bound = -bar_index_min
-            offset_upper_bound = bar_max - 1 - bar_index_max
-            # to make bar index distribute in [0, bar_max)
-            bar_index_offset = random.randint(
-                offset_lower_bound, offset_upper_bound) if offset_lower_bound <= offset_upper_bound else offset_lower_bound
-            e_segment = []
-            for i in e[L: R + 1]:
-                if i[0] is None or i[0] + bar_index_offset < bar_max:
-                    e_segment.append(i)
-                else:
-                    break
-            tokens_per_note = 8
-            output_words = (['<s>'] * tokens_per_note) \
-                + [('<{}-{}>'.format(j, k if j > 0 else k + bar_index_offset) if k is not None else '<unk>') for i in e_segment for j, k in enumerate(i)] \
-                + (['</s>'] * (tokens_per_note - 1)
-                   )  # tokens_per_note - 1 for append_eos functionality of binarizer in fairseq
-            output_str_list.append(' '.join(output_words))
+# def F(file_name):
+#     try_times = 10
+#     midi_file = None
+#     for _ in range(try_times):
+#         try:
+#             lock_file.acquire()
+#             with data_zip.open(file_name) as f:
+#                 # this may fail due to unknown bug
+#                 midi_file = io.BytesIO(f.read())
+#         except BaseException as e:
+#             try_times -= 1
+#             time.sleep(1)
+#             if try_times == 0:
+#                 print('ERROR(READ): ' + file_name +
+#                       ' ' + str(e) + '\n', end='')
+#                 return None
+#         finally:
+#             lock_file.release()
+#     try:
+#         with timeout(seconds=600):
+#             midi_obj = miditoolkit.midi.parser.MidiFile(file=midi_file)
+#         # check abnormal values in parse result
+#         assert all(0 <= j.start < 2 ** 31 and 0 <= j.end < 2 **
+#                    31 for i in midi_obj.instruments for j in i.notes), 'bad note time'
+#         assert all(0 < j.numerator < 2 ** 31 and 0 < j.denominator < 2 **
+#                    31 for j in midi_obj.time_signature_changes), 'bad time signature value'
+#         assert 0 < midi_obj.ticks_per_beat < 2 ** 31, 'bad ticks per beat'
+#     except BaseException as e:
+#         print('ERROR(PARSE): ' + file_name + ' ' + str(e) + '\n', end='')
+#         return None
+#     midi_notes_count = sum(len(inst.notes) for inst in midi_obj.instruments)
+#     if midi_notes_count == 0:
+#         print('ERROR(BLANK): ' + file_name + '\n', end='')
+#         return None
+#     try:
+#         e = MIDI_to_encoding(midi_obj)
+#         if len(e) == 0:
+#             print('ERROR(BLANK): ' + file_name + '\n', end='')
+#             return None
+#         if ts_filter:
+#             allowed_ts = t2e(time_signature_reduce(4, 4))
+#             if not all(i[6] == allowed_ts for i in e):
+#                 print('ERROR(TSFILT): ' + file_name + '\n', end='')
+#                 return None
+#         if deduplicate:
+#             duplicated = False
+#             dup_file_name = ''
+#             midi_hash = '0' * 32
+#             try:
+#                 midi_hash = get_hash(e)
+#             except BaseException as e:
+#                 pass
+#             lock_set.acquire()
+#             if midi_hash in midi_dict:
+#                 dup_file_name = midi_dict[midi_hash]
+#                 duplicated = True
+#             else:
+#                 midi_dict[midi_hash] = file_name
+#             lock_set.release()
+#             if duplicated:
+#                 print('ERROR(DUPLICATED): ' + midi_hash + ' ' +
+#                       file_name + ' == ' + dup_file_name + '\n', end='')
+#                 return None
+#         output_str_list = []
+#         sample_step = max(round(sample_len_max / sample_overlap_rate), 1)
+#         for p in range(0 - random.randint(0, sample_len_max - 1), len(e), sample_step):
+#             L = max(p, 0)
+#             R = min(p + sample_len_max, len(e)) - 1
+#             bar_index_list = [e[i][0]
+#                               for i in range(L, R + 1) if e[i][0] is not None]
+#             bar_index_min = 0
+#             bar_index_max = 0
+#             if len(bar_index_list) > 0:
+#                 bar_index_min = min(bar_index_list)
+#                 bar_index_max = max(bar_index_list)
+#             offset_lower_bound = -bar_index_min
+#             offset_upper_bound = bar_max - 1 - bar_index_max
+#             # to make bar index distribute in [0, bar_max)
+#             bar_index_offset = random.randint(
+#                 offset_lower_bound, offset_upper_bound) if offset_lower_bound <= offset_upper_bound else offset_lower_bound
+#             e_segment = []
+#             for i in e[L: R + 1]:
+#                 if i[0] is None or i[0] + bar_index_offset < bar_max:
+#                     e_segment.append(i)
+#                 else:
+#                     break
+#             tokens_per_note = 8
+#             output_words = (['<s>'] * tokens_per_note) \
+#                 + [('<{}-{}>'.format(j, k if j > 0 else k + bar_index_offset) if k is not None else '<unk>') for i in e_segment for j, k in enumerate(i)] \
+#                 + (['</s>'] * (tokens_per_note - 1)
+#                    )  # tokens_per_note - 1 for append_eos functionality of binarizer in fairseq
+#             output_str_list.append(' '.join(output_words))
 
-        # no empty
-        if not all(len(i.split()) > tokens_per_note * 2 - 1 for i in output_str_list):
-            print('ERROR(ENCODE): ' + file_name + ' ' + str(e) + '\n', end='')
-            return False
-        try:
-            lock_write.acquire()
-            writer(file_name, output_str_list)
-        except BaseException as e:
-            print('ERROR(WRITE): ' + file_name + ' ' + str(e) + '\n', end='')
-            return False
-        finally:
-            lock_write.release()
-        print('SUCCESS: ' + file_name + '\n', end='')
-        return True
-    except BaseException as e:
-        print('ERROR(PROCESS): ' + file_name + ' ' + str(e) + '\n', end='')
-        return False
-    print('ERROR(GENERAL): ' + file_name + '\n', end='')
-    return False
+#         # no empty
+#         if not all(len(i.split()) > tokens_per_note * 2 - 1 for i in output_str_list):
+#             print('ERROR(ENCODE): ' + file_name + ' ' + str(e) + '\n', end='')
+#             return False
+#         try:
+#             lock_write.acquire()
+#             writer(file_name, output_str_list)
+#         except BaseException as e:
+#             print('ERROR(WRITE): ' + file_name + ' ' + str(e) + '\n', end='')
+#             return False
+#         finally:
+#             lock_write.release()
+#         print('SUCCESS: ' + file_name + '\n', end='')
+#         return True
+#     except BaseException as e:
+#         print('ERROR(PROCESS): ' + file_name + ' ' + str(e) + '\n', end='')
+#         return False
+#     print('ERROR(GENERAL): ' + file_name + '\n', end='')
+#     return False
 
 
 def G(file_name):

@@ -9,9 +9,9 @@ import numpy as np
 from miditoolkit import MidiFile
 from tqdm import tqdm
 
-from preprocess import MIDI_to_encoding, encoding_to_MIDI, encoding_to_str, str_to_encoding, gen_dictionary
-from utils import reverse_label_dict, filter_invalid_indexes, top_k_top_p, switch_temperature, decode_w_label_dict
-from musicbert import MusicBERTModel
+from MusicVariationBert.preprocess import MIDI_to_encoding, encoding_to_MIDI, encoding_to_str, str_to_encoding, gen_dictionary
+from MusicVariationBert.utils import reverse_label_dict, filter_invalid_indexes, top_k_top_p, switch_temperature, decode_w_label_dict
+from MusicVariationBert.musicbert import MusicBERTModel
 
 def encode_midi_for_musicbert(filename: str, label_dict: dict):
     '''
