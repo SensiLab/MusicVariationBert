@@ -321,7 +321,6 @@ def vanilla_prediction(roberta_base: MusicBERTModel,
         input = encoding.unsqueeze(0)
         prev_idx = encoding[masked_idx-1]
         # print(reversed_dict[prev_idx.item()])
-
         with torch.no_grad():
             features, _ = roberta_base.model.extract_features(input)
             logits = features[0, masked_idx]
@@ -484,6 +483,7 @@ def generate_variations(filename: str,
                                            label_dict, 
                                            reversed_dict, 
                                            temperature_dict)
+
         variations.append(pred_encoding)
 
     return variations
@@ -506,12 +506,12 @@ def write_variations(variations: list, filepath_prefix: str, reversed_dict: dict
         encoding_str = decode_w_label_dict(reversed_dict, variation)
         octuple_encoding = str_to_encoding(encoding_str)
         midi_obj = encoding_to_MIDI(encoding=octuple_encoding)
-        midi_obj.dump(f'{filepath_prefix}_{i}.mid')
+        midi_obj.dump(f'{filepath_prefix}')
 
 
 if __name__ == "__main__":
 
-    filename = '/home/sjkro1/muzic/musicbert/Input 3.mid'
+    filename = '/home/sjkro1/MusicVariationApp/MusicVariationWorkshop/uploads/Indiana_Jones.mid'
 
     if not os.path.exists('/home/sjkro1/muzic/musicbert/input0/dict.txt'):
        gen_dictionary("input0/dict.txt")
@@ -556,7 +556,7 @@ if __name__ == "__main__":
 
     # 0: bar | 1: position | 2: instrument | 3: pitch | 4: duration | 5: velocity | 6: time signature | 7: tempo 
     attributes = [3, 4]
-    bars = [(3, 8)]
+    bars = [(3, 5)]
 
     variations = generate_variations(filename, 1, roberta_base, label_dict, reversed_dict, False, 100, attributes, temperature_dict, bars=bars)
     write_variations(variations, "outputs/test_bar_level", reversed_dict)
