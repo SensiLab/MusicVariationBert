@@ -292,7 +292,8 @@ def vanilla_prediction(roberta_base: MusicBERTModel,
                        mask_idx: int,
                        label_dict: dict,
                        reversed_dict: dict,
-                       temperature_dict: dict):
+                       temperature_dict: dict,
+                       multinomial_sample: bool):
     '''
     Predicts each masked token sequentially.
     (1) Find first mask token and predict.
@@ -309,6 +310,8 @@ def vanilla_prediction(roberta_base: MusicBERTModel,
         reversed_dict (dict): dictionary for token to str mapping.
         temperature_dict (dict): dictionary containing temperature values for each
             attribute.
+        multinomial_sample (bool): if True, samples attribute from a multinomial distribution
+            regardless of temperature value.
     Returns:
         torch.tensor: the encoding tensor of music for music bert with all masked tokens
             predicted.
@@ -337,8 +340,9 @@ def vanilla_prediction(roberta_base: MusicBERTModel,
                 probs = probs.unsqueeze(0)
 
             # TODO: more temperature and repeat count
-            # TODO: what is repeat count?
-            if temperature != 1:
+            # TODO: improve temperature
+            # TODO: what is repeat count
+            if temperature != 1 or multinomial_sample:
                 top_preds = torch.multinomial(probs, 1)
                 top_preds = top_preds.reshape(-1)
                 # print(reversed_dict[top_preds.item()])
@@ -421,7 +425,8 @@ def generate_variations(filename: str,
                         attributes: list, 
                         temperature_dict: dict, 
                         bars=None,
-                        bar_level=False):
+                        bar_level=False,
+                        multinomial_sample=False):
     '''
     Takes a midi filepath and generates n variations using the MusicBert model over specified
     attributes and controllable temperature.
@@ -440,6 +445,8 @@ def generate_variations(filename: str,
         temperature_dict (dict): dictionary containing temperature values for each attribute
         bars (list or None): if None vary over all bars, if a list only vary bars in the list
         bar_level (bool): if True, mask all elements in a bar
+        multinomial_sample (bool): if True, samples attribute from a multinomial distribution
+            regardless of temperature value.
     Returns:
         list: a list containing n variations
     '''
@@ -463,7 +470,7 @@ def generate_variations(filename: str,
     for _ in range(n_var):
 
         # add notes
-        if new_notes is not None:
+        if new_notes is True:
             encoding, new_notes = add_notes(encoding, 50, mask_idx)
 
         if bar_level:
@@ -482,7 +489,8 @@ def generate_variations(filename: str,
                                            mask_idx, 
                                            label_dict, 
                                            reversed_dict, 
-                                           temperature_dict)
+                                           temperature_dict,
+                                           multinomial_sample)
 
         variations.append(pred_encoding)
 
@@ -556,8 +564,8 @@ if __name__ == "__main__":
 
     # 0: bar | 1: position | 2: instrument | 3: pitch | 4: duration | 5: velocity | 6: time signature | 7: tempo 
     attributes = [3, 4]
-    bars = [(3, 5)]
+    bars = [(0, 0)]
 
-    variations = generate_variations(filename, 1, roberta_base, label_dict, reversed_dict, False, 100, attributes, temperature_dict, bars=bars)
+    variations = generate_variations(filename, 1, roberta_base, label_dict, reversed_dict, False, 100, attributes, temperature_dict, bars=bars, bar_level=True)
     write_variations(variations, "outputs/test_bar_level", reversed_dict)
 
