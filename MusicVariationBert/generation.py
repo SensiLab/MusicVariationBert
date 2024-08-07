@@ -240,7 +240,7 @@ def controlled_masking(encoding: torch.tensor,
         # mask any octuple minus the start and end tokens
         octuples = range(1, int( len(encoding) / 8 ) - 2)
 
-    # if new notes have been added, prevent masking of those new notes
+    # if new notes have beeen addd, prevent masking of those new notes
     if new_notes is not None:
         octuples = np.setdiff1d(octuples, new_notes)
 

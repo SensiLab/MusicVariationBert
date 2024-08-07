@@ -200,8 +200,8 @@ def switch_temperature(prev_index: int, reverse_dict, temperature_dict):
   # First we convert the token to it's string mapping 
   prev_index = prev_index.item()
   str_encoding = reverse_dict[prev_index]
-  
-  if str_encoding == 's':
+
+  if str_encoding[1] == 's':
      return temperature_dict[0]
   else:
     return temperature_dict[((int(str_encoding[1]) + 1)%(8))] 
