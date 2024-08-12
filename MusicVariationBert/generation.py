@@ -421,6 +421,7 @@ def generate_variations(filename: str,
                         label_dict: dict,
                         reversed_dict: dict,
                         new_notes: bool,
+                        new_notes_percentage: int,
                         variation_percentage: int,
                         attributes: list, 
                         temperature_dict: dict, 
@@ -439,6 +440,8 @@ def generate_variations(filename: str,
         label_dict (dict): dictionary to convert string to token
         reversed_dict (dict): dictionary to convert token to string
         add_notes (bool): if True, new notes will be added to the variation
+        new_notes_percentage (int): how many new notes should be added to the piece as a percentage of notes
+            in the original piece.
         variation_percentage (int): how much of the piece should be varied
         attributes (list): list containing attributes to vary
         0: bar | 1: position | 2: instrument | 3: pitch | 4: duration | 5: velocity | 6: time signature | 7: tempo
@@ -471,7 +474,7 @@ def generate_variations(filename: str,
 
         # add notes
         if new_notes is True:
-            encoding, new_notes = add_notes(encoding, 50, mask_idx)
+            encoding, new_notes = add_notes(encoding, new_notes_percentage, mask_idx)
 
         if bar_level:
             masked_encoding = bar_level_masking(encoding, attributes=attributes, bars=bars, mask_idx=mask_idx)
