@@ -293,7 +293,8 @@ def vanilla_prediction(roberta_base: MusicBERTModel,
                        label_dict: dict,
                        reversed_dict: dict,
                        temperature_dict: dict,
-                       multinomial_sample: bool):
+                       multinomial_sample: bool,
+                       custom_progress_bar=None):
     '''
     Predicts each masked token sequentially.
     (1) Find first mask token and predict.
@@ -312,6 +313,8 @@ def vanilla_prediction(roberta_base: MusicBERTModel,
             attribute.
         multinomial_sample (bool): if True, samples attribute from a multinomial distribution
             regardless of temperature value.
+        custom_progress_bar (customtkinter.CTkProgressBar): if not None, update this progress
+            bar.
     Returns:
         torch.tensor: the encoding tensor of music for music bert with all masked tokens
             predicted.
@@ -320,7 +323,12 @@ def vanilla_prediction(roberta_base: MusicBERTModel,
     masked_idxs = [i for i, x in enumerate(encoding.tolist()) if x==mask_idx]
     encoding_dtype = encoding.dtype
 
-    for masked_idx in tqdm(masked_idxs):
+    for i, masked_idx in enumerate(tqdm(masked_idxs)):
+        
+        # update progress bar
+        if custom_progress_bar is not None:
+            custom_progress_bar.set(i / (len(masked_idxs)-1))
+
         input = encoding.unsqueeze(0)
         prev_idx = encoding[masked_idx-1]
         # print(reversed_dict[prev_idx.item()])
@@ -328,6 +336,8 @@ def vanilla_prediction(roberta_base: MusicBERTModel,
             features, _ = roberta_base.model.extract_features(input)
             logits = features[0, masked_idx]
 
+            # retrieve temperature based off previous attirbute
+            # octuple encoding is cyclical
             temperature = switch_temperature(prev_idx, reversed_dict, temperature_dict)
             if temperature != 1: logits = logits / temperature
 
@@ -427,7 +437,8 @@ def generate_variations(filename: str,
                         temperature_dict: dict, 
                         bars=None,
                         bar_level=False,
-                        multinomial_sample=False):
+                        multinomial_sample=False,
+                        custom_progress_bar=None):
     '''
     Takes a midi filepath and generates n variations using the MusicBert model over specified
     attributes and controllable temperature.
@@ -450,6 +461,8 @@ def generate_variations(filename: str,
         bar_level (bool): if True, mask all elements in a bar
         multinomial_sample (bool): if True, samples attribute from a multinomial distribution
             regardless of temperature value.
+        custom_progress_bar (customtkinter.CTkProgressBar): if not None, update this progress
+            bar.
     Returns:
         list: a list containing n variations
     '''
@@ -493,7 +506,8 @@ def generate_variations(filename: str,
                                            label_dict, 
                                            reversed_dict, 
                                            temperature_dict,
-                                           multinomial_sample)
+                                           multinomial_sample,
+                                           custom_progress_bar)
 
         variations.append(pred_encoding)
 
@@ -522,7 +536,7 @@ def write_variations(variations: list, filepath_prefix: str, reversed_dict: dict
 
 if __name__ == "__main__":
 
-    filename = '/home/sjkro1/MusicVariationApp/MusicVariationWorkshop/uploads/Indiana_Jones.mid'
+    filename = '../../Indiana Jones_PC_Indiana Jones and the Fate of Atlantis_Crossing.mid'
 
     if not os.path.exists('/home/sjkro1/muzic/musicbert/input0/dict.txt'):
        gen_dictionary("input0/dict.txt")
@@ -569,6 +583,18 @@ if __name__ == "__main__":
     attributes = [3, 4]
     bars = [(0, 0)]
 
-    variations = generate_variations(filename, 1, roberta_base, label_dict, reversed_dict, False, 100, attributes, temperature_dict, bars=bars, bar_level=True)
+    variations = generate_variations(filename=filename, 
+                                     n_var=1, 
+                                     roberta_base=roberta_base,
+                                     label_dict=label_dict, 
+                                     reversed_dict=reversed_dict, 
+                                     new_notes=False, 
+                                     new_notes_percentage=100, 
+                                     variation_percentage=50, 
+                                     attributes=attributes, 
+                                     temperature_dict=temperature_dict, 
+                                     bars=bars, 
+                                     bar_level=True)
+    
     write_variations(variations, "outputs/test_bar_level", reversed_dict)
 

@@ -21,3 +21,6 @@ Install Mido:
 Install Midotoolkit:
 
 `!pip install miditoolkit`
+
+Numpy Version
+`!pip install numpy=1.23.0`
