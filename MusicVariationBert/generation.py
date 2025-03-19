@@ -313,7 +313,7 @@ def vanilla_prediction(roberta_base: MusicBERTModel,
             attribute.
         multinomial_sample (bool): if True, samples attribute from a multinomial distribution
             regardless of temperature value.
-        custom_progress_bar (customtkinter.CTkProgressBar): if not None, update this progress
+        custom_progress_basr (customtkinter.CTkProgressBar): if not None, update this progress
             bar.
     Returns:
         torch.tensor: the encoding tensor of music for music bert with all masked tokens
@@ -438,7 +438,7 @@ def generate_variations(filename: str,
                         bars=None,
                         bar_level=False,
                         multinomial_sample=False,
-                        custom_progress_bar=None):
+                        custom_progress_bars=None):
     '''
     Takes a midi filepath and generates n variations using the MusicBert model over specified
     attributes and controllable temperature.
@@ -483,7 +483,7 @@ def generate_variations(filename: str,
     variations = []
 
     # generate n variaitons
-    for _ in range(n_var):
+    for i in range(n_var):
 
         # add notes
         if new_notes is True:
@@ -507,7 +507,7 @@ def generate_variations(filename: str,
                                            reversed_dict, 
                                            temperature_dict,
                                            multinomial_sample,
-                                           custom_progress_bar)
+                                           custom_progress_bars[i])
 
         variations.append(pred_encoding)
 
