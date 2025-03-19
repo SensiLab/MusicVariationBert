@@ -294,7 +294,8 @@ def vanilla_prediction(roberta_base: MusicBERTModel,
                        reversed_dict: dict,
                        temperature_dict: dict,
                        multinomial_sample: bool,
-                       custom_progress_bar=None):
+                       custom_progress_bar=None,
+                       playback_button=None):
     '''
     Predicts each masked token sequentially.
     (1) Find first mask token and predict.
@@ -313,8 +314,9 @@ def vanilla_prediction(roberta_base: MusicBERTModel,
             attribute.
         multinomial_sample (bool): if True, samples attribute from a multinomial distribution
             regardless of temperature value.
-        custom_progress_basr (customtkinter.CTkProgressBar): if not None, update this progress
+        custom_progress_bar (customtkinter.CTkProgressBar): if not None, update this progress
             bar.
+        playback_button (customtkinter.CTkButton): if not None, update this button on completion.
     Returns:
         torch.tensor: the encoding tensor of music for music bert with all masked tokens
             predicted.
@@ -360,6 +362,10 @@ def vanilla_prediction(roberta_base: MusicBERTModel,
                 top_preds = torch.argmax(probs, dim=1)
             
             encoding[masked_idx] = top_preds.type(encoding_dtype)
+    
+    # update GUI button
+    if playback_button is not None:
+        playback_button.configure(state='normal', fg_color='#1F6AA5')
     
     return encoding
 
@@ -438,7 +444,8 @@ def generate_variations(filename: str,
                         bars=None,
                         bar_level=False,
                         multinomial_sample=False,
-                        custom_progress_bars=None):
+                        custom_progress_bars=None,
+                        playback_buttons=None):
     '''
     Takes a midi filepath and generates n variations using the MusicBert model over specified
     attributes and controllable temperature.
@@ -461,8 +468,10 @@ def generate_variations(filename: str,
         bar_level (bool): if True, mask all elements in a bar
         multinomial_sample (bool): if True, samples attribute from a multinomial distribution
             regardless of temperature value.
-        custom_progress_bar (customtkinter.CTkProgressBar): if not None, update this progress
-            bar.
+        custom_progress_bar (list): if not None, update these progress
+            bars. FOR USE WITH CUSTOMTKINTER GUI
+        playback_buttons (list): if not none, update the status of these buttons.
+            FOR USE WITH CUSTOMTKINTER GUI
     Returns:
         list: a list containing n variations
     '''
@@ -507,7 +516,8 @@ def generate_variations(filename: str,
                                            reversed_dict, 
                                            temperature_dict,
                                            multinomial_sample,
-                                           custom_progress_bars[i])
+                                           custom_progress_bars[i],
+                                           playback_buttons[i])
 
         variations.append(pred_encoding)
 
