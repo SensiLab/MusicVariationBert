@@ -523,13 +523,13 @@ def generate_variations(filename: str,
 
     return variations
 
-def write_variations(variations: list, filepath_prefix: str, reversed_dict: dict):
+def write_variation(variation, filepath_prefix: str, reversed_dict: dict):
     '''
     Writes all variations to specified directory.
     @author: sjkrol
 
     Args:
-        variations (list): a list containing encoded torch.tensors to be decoded to Midi.
+        variation (torch.tensor): encoded midi output for variation.
         filepath_prefix (str): the filepath and filename prefix that the variations will
             be saved to.
         reversed_dict (dict): dictionary for converting tokens to str.
@@ -537,11 +537,10 @@ def write_variations(variations: list, filepath_prefix: str, reversed_dict: dict
         None
     '''
 
-    for i, variation in enumerate(variations):
-        encoding_str = decode_w_label_dict(reversed_dict, variation)
-        octuple_encoding = str_to_encoding(encoding_str)
-        midi_obj = encoding_to_MIDI(encoding=octuple_encoding)
-        midi_obj.dump(f'{filepath_prefix}')
+    encoding_str = decode_w_label_dict(reversed_dict, variation)
+    octuple_encoding = str_to_encoding(encoding_str)
+    midi_obj = encoding_to_MIDI(encoding=octuple_encoding)
+    midi_obj.dump(f'{filepath_prefix}')
 
 
 if __name__ == "__main__":
