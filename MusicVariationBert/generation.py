@@ -13,6 +13,15 @@ from MusicVariationBert.preprocess import MIDI_to_encoding, encoding_to_MIDI, en
 from MusicVariationBert.utils import reverse_label_dict, filter_invalid_indexes, top_k_top_p, switch_temperature, decode_w_label_dict
 from MusicVariationBert.musicbert import MusicBERTModel
 
+ATTRIBUTE_INDEXES = {"Bar" : 0,
+                     "Position" : 1,
+                     "Instrument" : 2,
+                     "Pitch" : 3,
+                     "Duration" : 4,
+                     "Velocity" : 5,
+                     "Time signature": 6,
+                     "Tempo" : 7}
+
 def encode_midi_for_musicbert(filename: str, label_dict: dict):
     '''
     @author: sjkrol
@@ -240,11 +249,10 @@ def controlled_masking(encoding: torch.tensor,
         # mask any octuple minus the start and end tokens
         octuples = range(1, int( len(encoding) / 8 ) - 2)
 
-    # if new notes have beeen addd, prevent masking of those new notes
+    # if new notes have beeen added, prevent masking of those new notes
     if new_notes is not None:
         octuples = np.setdiff1d(octuples, new_notes)
 
-    # TODO: less random masking, mask attributes on a bar level
     # randomly select octuples to mask
     masked_octs = np.random.choice(a=octuples, 
                                     size=int(len(octuples)*(note_percentage_random_mask/100)),
@@ -431,6 +439,56 @@ def add_notes(encoding: torch.tensor, new_notes_percentage: int, mask_idx: int):
 
     return new_encoding, masked_octs
 
+def create_attribute_array(attributes: list) -> list:
+    """
+    Function takes a list containing the attributes
+    to vary and generates the attribute array. This array
+    is used in the masking function and the values of 
+    each attibute are:
+    0: bar | 1: position | 2: instrument | 3: pitch | 4: duration | 
+    5: velocity | 6: time signature | 7: tempo 
+    @author: Stephen Krol
+
+    Args:
+        attributes (list): list containing which attributes
+            are being varied.
+    Returns:
+        list: array containing the attribute indexes to change based
+            off the octuple encoding.
+    """
+    
+    return [ATTRIBUTE_INDEXES[attribute] for attribute in attributes]
+
+def create_temperature_dict(temperatures: dict) -> dict:
+    """
+    Function creates function dictionary from inputed
+    temperature values.
+    @author: Stephen Krol
+
+    Args:
+        temperatures (dict): key - attribute name as a str
+            value - temperature value.
+    Returnns:
+        (dict): key - attribute as index value
+            value - temperature value.
+    """
+
+    temperature_dict = {
+        0 : 1.0,
+        1 : 1.0,
+        2 : 1.0,
+        3 : 1.0,
+        4 : 1.0,
+        5 : 1.0,
+        6 : 1.0,
+        7 : 1.0,
+    }
+
+    for attribute, temperature in temperatures.items():
+        temperature_dict[ATTRIBUTE_INDEXES[attribute]] = temperature
+
+    return temperature_dict
+
 def generate_variations(filename: str, 
                         n_var: int, 
                         roberta_base: MusicBERTModel,
@@ -482,11 +540,15 @@ def generate_variations(filename: str,
     # identify mask toke
     mask_idx = label_dict.index('<mask>')
 
-
     # TODO: add assertion that all instruments are the same
     # encode midi file
     encoding = encode_midi_for_musicbert(filename, label_dict)
 
+    # create attribute indexed array
+    attributes = create_attribute_array(attributes)
+
+    # create complete temperture dictionaryc
+    temperature_dict = create_temperature_dict(temperature_dict)
 
     # create variations list
     variations = []
@@ -605,5 +667,5 @@ if __name__ == "__main__":
                                      bars=bars, 
                                      bar_level=True)
     
-    write_variations(variations, "outputs/test_bar_level", reversed_dict)
+    write_variation(variations, "outputs/test_bar_level", reversed_dict)
 
