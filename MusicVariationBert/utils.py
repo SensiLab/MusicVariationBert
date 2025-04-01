@@ -4,6 +4,8 @@ import torch.functional as F
 import fairseq
 import numpy as np
 
+from typing import Tuple
+
 BAR_START = "<0-0>"
 BAR_END = "<0-255>"
 
@@ -16,7 +18,8 @@ INS_END = "<2-127>"
 PITCH_START = "<3-0>"
 PITCH_END = "<3-255>"
 
-MIN_PITCH = 517
+MIN_PITCH = 517 # C-2
+MAX_PITCH = 644 # G8
 
 DUR_START = "<4-0>"
 DUR_END = "<4-127>"
@@ -31,6 +34,65 @@ TEMPO_START = "<7-0>"
 TEMPO_END = "<7-48>"
 
 SPECIAL_TOKENS = ['<mask>', '<s>', '<pad>', '</s>', '<unk>']
+
+NOTES_SHARP = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+
+NOTE_TO_TOKEN = {
+    "C": 517,
+    "C#": 518,
+    "Db": 518,  # Enharmonic equivalent of C#
+    "D": 519,
+    "D#": 520,
+    "Eb": 520,  # Enharmonic equivalent of D#
+    "E": 521,
+    "Fb": 521,  # Enharmonic equivalent of E
+    "E#": 522,  # Enharmonic equivalent of F
+    "F": 522,  
+    "F#": 523,
+    "Gb": 523,  # Enharmonic equivalent of F#
+    "G": 524,
+    "G#": 525,
+    "Ab": 525,  # Enharmonic equivalent of G#
+    "A": 526,
+    "A#": 527,
+    "Bb": 527,  # Enharmonic equivalent of A#
+    "B": 528,
+    "Cb": 528,  # Enharmonic equivalent of B
+    "B#": 529   # Enharmonic equivalent of C in the next octave
+}
+
+KEYS = {
+    "C Major": ['C', 'D', 'E', 'F', 'G', 'A', 'B'],
+    "C# Major": ['C#', 'D#', 'E#', 'F#', 'G#', 'A#', 'B#'],
+    "D Major": ['D', 'E', 'F#', 'G', 'A', 'B', 'C#'],
+    "E Major": ['E', 'F#', 'G#', 'A', 'B', 'C#', 'D#'],
+    "F Major": ['F', 'G', 'A', 'Bb', 'C', 'D', 'E'],
+    "F# Major": ['F#', 'G#', 'A#', 'B', 'C#', 'D#', 'E#'],
+    "G Major": ['G', 'A', 'B', 'C', 'D', 'E', 'F#'],
+    "A Major": ['A', 'B', 'C#', 'D', 'E', 'F#', 'G#'],
+    "B Major": ['B', 'C#', 'D#', 'E', 'F#', 'G#', 'A#'],
+    "Cb Major": ['Cb', 'Db', 'Eb', 'Fb', 'Gb', 'Ab', 'Bb'],
+    "Db Major": ['Db', 'Eb', 'F', 'Gb', 'Ab', 'Bb', 'C'],
+    "Eb Major": ['Eb', 'F', 'G', 'Ab', 'Bb', 'C', 'D'],
+    "Gb Major": ['Gb', 'Ab', 'Bb', 'Cb', 'Db', 'Eb', 'F'],
+    "Ab Major": ['Ab', 'Bb', 'C', 'Db', 'Eb', 'F', 'G'],
+    "Bb Major": ['Bb', 'C', 'D', 'Eb', 'F', 'G', 'A'],
+    "A Minor": ['A', 'B', 'C', 'D', 'E', 'F', 'G'],
+    "A# Minor": ['A#', 'B#', 'C#', 'D#', 'E#', 'F#', 'G#'],
+    "B Minor": ['B', 'C#', 'D', 'E', 'F#', 'G', 'A'],
+    "C Minor": ['C', 'D', 'Eb', 'F', 'G', 'Ab', 'Bb'],
+    "C# Minor": ['C#', 'D#', 'E', 'F#', 'G#', 'A', 'B'],
+    "D Minor": ['D', 'E', 'F', 'G', 'A', 'Bb', 'C'],
+    "D# Minor": ['D#', 'E#', 'F#', 'G#', 'A#', 'B', 'C#'],
+    "E Minor": ['E', 'F#', 'G', 'A', 'B', 'C', 'D'],
+    "F Minor": ['F', 'G', 'Ab', 'Bb', 'C', 'Db', 'Eb'],
+    "F# Minor": ['F#', 'G#', 'A', 'B', 'C#', 'D', 'E'],
+    "G Minor": ['G', 'A', 'Bb', 'C', 'D', 'Eb', 'F'],
+    "G# Minor": ['G#', 'A#', 'B', 'C#', 'D#', 'E', 'F#'],
+    "Bb Minor": ['Bb', 'C', 'Db', 'Eb', 'F', 'Gb', 'Ab'],
+    "Eb Minor": ['Eb', 'F', 'Gb', 'Ab', 'Bb', 'Cb', 'Db'],
+    "Ab Minor": ['Ab', 'Bb', 'Cb', 'Db', 'Eb', 'Fb', 'Gb']
+}
 
 def bar_range(label_dict): return label_dict.index(BAR_START), label_dict.index(BAR_END)+1
 def pos_range(label_dict): return label_dict.index(POS_START), label_dict.index(POS_END)+1
@@ -48,11 +110,41 @@ def reverse_label_dict(label_dict: fairseq.data.dictionary.Dictionary):
   '''
   return {v: k for k, v in label_dict.indices.items()}
 
+def get_key_notes(key: str) -> Tuple[list, list]:
+    """
+    Function takes a key as input and returns the list of
+    notes in that key,
+    @author: Stephen Krol
+
+    Args:
+        key: key of the scale, consists of a root note
+            followed by either major or minor.
+    Returns:
+        list: list of notes in the key.
+        list: list of notes not in key.
+    """
+    
+    assert key in KEYS, f'{key} not valid.'
+
+    possible_notes = np.array(range(517, 530))
+
+    key_notes = [NOTE_TO_TOKEN[note] for note in KEYS[key]]
+    chromatic_notes = np.setdiff1d(possible_notes, key_notes)
+
+    all_chromatic_notes = []
+
+    for i in range(11):
+        for note in chromatic_notes:
+            all_chromatic_notes.append(note + i*12)
+
+    return key_notes, all_chromatic_notes
+
 def filter_invalid_indexes(logits, 
                            prev_index, 
                            label_dict, 
                            rev_inv_map, 
                            filtered_pitches_idx:list,
+                           key:str = None,
                            filter_value=-float('Inf')):
   """ Filter a distribution of logits using prev_predicted token 
         Args:
@@ -60,6 +152,7 @@ def filter_invalid_indexes(logits,
             prev_index: previous predicted token 
             label_dict : dictionary mapping string octuple encodings to indices 
             filtered_pitches_idx (list): indexes of pitches to be filtered
+            key (str): key of the song.
       Returns: filtered logits according to prev_idx 
 
       @author: midiformers
@@ -105,10 +198,21 @@ def filter_invalid_indexes(logits,
     logits[list(range(*sig_range(label_dict)))] = filter_value
     logits[list(range(*tempo_range(label_dict)))] = filter_value
 
-    # print(logits[list(range(*pitch_range(label_dict)))])
+    # filter pitches based off specified range
     if len(filtered_pitches_idx) != 0:    
       logits[filtered_pitches_idx] = filter_value
-    # print(logits[list(range(*pitch_range(label_dict)))])
+    
+    # filter out chromatic pitches
+    if key is not None:
+      _, chromatic_notes = get_key_notes(key)
+      logits[chromatic_notes] = filter_value
+    
+    # filter out percussive pitches
+    percussion_idxs = [i for i in range(MAX_PITCH+1, MAX_PITCH+129)]
+    logits[percussion_idxs] = filter_value
+
+    print(logits[list(range(*pitch_range(label_dict)))])
+
   # pitch
   elif(str_encoding[1] == '3'):
     logits[list(range(*bar_range(label_dict)))] = filter_value

@@ -10,12 +10,19 @@ from miditoolkit import MidiFile
 from tqdm import tqdm
 
 from MusicVariationBert.preprocess import MIDI_to_encoding, encoding_to_MIDI, encoding_to_str, str_to_encoding, gen_dictionary
-from MusicVariationBert.utils import reverse_label_dict, filter_invalid_indexes, top_k_top_p, switch_temperature, decode_w_label_dict, pitch_range
+from MusicVariationBert.utils import (reverse_label_dict, 
+                                      filter_invalid_indexes, 
+                                      top_k_top_p, switch_temperature, 
+                                      decode_w_label_dict, 
+                                      pitch_range)
 from MusicVariationBert.musicbert import MusicBERTModel
 
 # TODO: consonnance and disonnance
+# TODO: control likelihood of chromatic note
+# TODO: fill empty bars
 # TODO: visualise MIDI
-# TODO: new notes working with bar range
+# TODO: new notes working with bar range & pitch range
+# TODO: attribute naming - beat division/accent
 
 ATTRIBUTE_INDEXES = {"Bar" : 0,
                      "Position" : 1,
@@ -29,7 +36,6 @@ ATTRIBUTE_INDEXES = {"Bar" : 0,
 # encoded pitch value for non percussian notes
 MIN_ENCODED_PITCH = 517 # caluclated 515, however C4 (60) is 589 : 589-60 = 529
 MAX_ENCODED_PITCH = 643
-
 
 def encode_midi_for_musicbert(filename: str, label_dict: dict):
     '''
@@ -398,8 +404,9 @@ def vanilla_prediction(roberta_base: MusicBERTModel,
                        reversed_dict: dict,
                        temperature_dict: dict,
                        multinomial_sample: bool,
-                       min_pitch: int=0,
-                       max_pitch: int=np.inf,
+                       min_pitch: None,
+                       max_pitch: None,
+                       key:str=None,
                        custom_progress_bar=None,
                        playback_button=None):
     '''
@@ -422,6 +429,7 @@ def vanilla_prediction(roberta_base: MusicBERTModel,
             regardless of temperature value.
         min_pitch (int): any note BELOW this pitch will be filtered out of variation process.
         max_pitch (int): any note ABOVE this pitch will be filtered out of variation process.
+        key (str): key of song.
         custom_progress_bar (customtkinter.CTkProgressBar): if not None, update this progress
             bar.
         playback_button (customtkinter.CTkButton): if not None, update this button on completion.
@@ -471,7 +479,8 @@ def vanilla_prediction(roberta_base: MusicBERTModel,
                                             prev_idx, 
                                             label_dict, 
                                             reversed_dict,
-                                            filtered_pitches_idx=filtered_pitches_idx)
+                                            filtered_pitches_idx=filtered_pitches_idx,
+                                            key=key)
             # TODO: investigate top_k performance
 
             logits = top_k_top_p(logits, top_k=5)
@@ -621,6 +630,7 @@ def generate_variations(filename: str,
                         temperature_dict: dict, 
                         min_pitch:int=None,
                         max_pitch:int=None,
+                        key:str=None,
                         bars=None,
                         bar_level=False,
                         multinomial_sample=False,
@@ -647,6 +657,7 @@ def generate_variations(filename: str,
         temperature_dict (dict): dictionary containing temperature values for each attribute
         min_pitch (int): any note BELOW this pitch will be filtered out of variation process.
         max_pitch (int): any note ABOVE this pitch will be filtered out of variation process.
+        key (str): key of song.
         bars (list or None): if None vary over all bars, if a list only vary bars in the list
         bar_level (bool): if True, mask all elements in a bar
         multinomial_sample (bool): if True, samples attribute from a multinomial distribution
@@ -729,6 +740,7 @@ def generate_variations(filename: str,
                                            multinomial_sample,
                                            min_pitch,
                                            max_pitch,
+                                           key,
                                            custom_progress_bar,
                                            playback_button)
 
@@ -812,11 +824,11 @@ if __name__ == "__main__":
                                      reversed_dict=reversed_dict, 
                                      new_notes=False, 
                                      new_notes_percentage=0, 
-                                     variation_percentage=50, 
+                                     variation_percentage=100, 
                                      attributes=attributes, 
-                                     min_pitch=588,
+                                     key='C Major',
                                      temperature_dict=temperature_dict, 
-                                     bars=bars, 
+                                     bars=None, 
                                      bar_level=False,
                                      GUI=False)
     
