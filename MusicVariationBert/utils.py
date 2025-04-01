@@ -16,6 +16,8 @@ INS_END = "<2-127>"
 PITCH_START = "<3-0>"
 PITCH_END = "<3-255>"
 
+MIN_PITCH = 517
+
 DUR_START = "<4-0>"
 DUR_END = "<4-127>"
 
@@ -46,12 +48,18 @@ def reverse_label_dict(label_dict: fairseq.data.dictionary.Dictionary):
   '''
   return {v: k for k, v in label_dict.indices.items()}
 
-def filter_invalid_indexes(logits, prev_index, label_dict, rev_inv_map, filter_value=-float('Inf')):
+def filter_invalid_indexes(logits, 
+                           prev_index, 
+                           label_dict, 
+                           rev_inv_map, 
+                           filtered_pitches_idx:list,
+                           filter_value=-float('Inf')):
   """ Filter a distribution of logits using prev_predicted token 
         Args:
             logits: logits distribution shape (vocabulary size)
             prev_index: previous predicted token 
             label_dict : dictionary mapping string octuple encodings to indices 
+            filtered_pitches_idx (list): indexes of pitches to be filtered
       Returns: filtered logits according to prev_idx 
 
       @author: midiformers
@@ -96,6 +104,11 @@ def filter_invalid_indexes(logits, prev_index, label_dict, rev_inv_map, filter_v
     logits[list(range(*vel_range(label_dict)))] = filter_value
     logits[list(range(*sig_range(label_dict)))] = filter_value
     logits[list(range(*tempo_range(label_dict)))] = filter_value
+
+    # print(logits[list(range(*pitch_range(label_dict)))])
+    if len(filtered_pitches_idx) != 0:    
+      logits[filtered_pitches_idx] = filter_value
+    # print(logits[list(range(*pitch_range(label_dict)))])
   # pitch
   elif(str_encoding[1] == '3'):
     logits[list(range(*bar_range(label_dict)))] = filter_value
@@ -141,6 +154,8 @@ def filter_invalid_indexes(logits, prev_index, label_dict, rev_inv_map, filter_v
     logits[list(range(*vel_range(label_dict)))] = filter_value
     logits[list(range(*sig_range(label_dict)))] = filter_value
     logits[list(range(*tempo_range(label_dict)))] = filter_value
+
+
 
   return logits 
 

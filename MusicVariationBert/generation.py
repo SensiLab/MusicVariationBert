@@ -10,8 +10,12 @@ from miditoolkit import MidiFile
 from tqdm import tqdm
 
 from MusicVariationBert.preprocess import MIDI_to_encoding, encoding_to_MIDI, encoding_to_str, str_to_encoding, gen_dictionary
-from MusicVariationBert.utils import reverse_label_dict, filter_invalid_indexes, top_k_top_p, switch_temperature, decode_w_label_dict
+from MusicVariationBert.utils import reverse_label_dict, filter_invalid_indexes, top_k_top_p, switch_temperature, decode_w_label_dict, pitch_range
 from MusicVariationBert.musicbert import MusicBERTModel
+
+# TODO: consonnance and disonnance
+# TODO: visualise MIDI
+# TODO: new notes working with bar range
 
 ATTRIBUTE_INDEXES = {"Bar" : 0,
                      "Position" : 1,
@@ -21,6 +25,11 @@ ATTRIBUTE_INDEXES = {"Bar" : 0,
                      "Velocity" : 5,
                      "Time signature": 6,
                      "Tempo" : 7}
+
+# encoded pitch value for non percussian notes
+MIN_ENCODED_PITCH = 517 # caluclated 515, however C4 (60) is 589 : 589-60 = 529
+MAX_ENCODED_PITCH = 643
+
 
 def encode_midi_for_musicbert(filename: str, label_dict: dict):
     '''
@@ -210,10 +219,96 @@ def get_bar_octuples(encoding: torch.tensor, bars=None, bar_separation=False):
 
     return maskable_octuples
 
+def filter_octuples_pitch(encoding: torch.tensor, 
+                          min_pitch:int=None,
+                          max_pitch:int=None):
+    """
+    Function filters out octuples where the pitch is lower
+    than a specified pitch. Used to ensure only melodic or
+    harmonic varition.
+    @author: Stephen Krol
+
+    Args:
+        encoding (torch.tensor): unflitered encoding vector.
+        min_pitch (int): any note below this pitch will be
+            filtered out.
+    Returns:
+        list: filtered octuples containing only notes above a certain
+            pitch value.
+    """
+
+    filtered_octuples = []
+
+    if min_pitch is None:
+        min_pitch = 0
+    
+    if max_pitch is None:
+        max_pitch = np.inf
+
+    for octuple in range(1, int( len(encoding) / 8 ) - 2):
+
+        pitch = encoding[octuple*8 + 3]
+        if pitch >= min_pitch and pitch <= max_pitch:
+            filtered_octuples.append(octuple)
+
+    return filtered_octuples 
+
+def filter_octuples(encoding: torch.tensor,
+                    min_pitch: int,
+                    max_pitch: int,
+                    bars: list):
+    """
+    Function filters through valid octuples to vary based
+    on user input parameters of min/max pitch and bars.
+    # TODO: improve this, this feels ugly and wrong
+    @author: Stephen Krol
+
+    Args:
+        encoding (torch.tensor): encoded midi sequence for
+            MusicBert.
+        min_pitch (int): minimum pitched note that can be
+            varied.
+        max_pitch (int): maximum pitched note that can be 
+            varied.
+        bars (list): a list of bars that can be masked, contains 
+            either ints representing single bars or tuples containing
+            a bar range.
+    Returns:
+        list-like: a list of valid octuples that can be varied.
+    """
+    pitch_octuples = []
+    bar_octuples = []
+
+    if min_pitch is not None or max_pitch is not None:
+        pitch_octuples = filter_octuples_pitch(encoding, min_pitch, max_pitch)
+
+    if bars:
+        bar_octuples = get_bar_octuples(encoding=encoding, bars=bars)
+    
+    # 
+    if pitch_octuples or bar_octuples:
+        # if only bars:
+        if not pitch_octuples:
+            print("Only Bars")
+            return bar_octuples
+        # if only pitch
+        elif not bar_octuples:
+            print("only Pitch")
+            return pitch_octuples
+        else:
+            print("Both")
+            # this is definitely not the best way to do this
+            # running out of time though :(
+            return np.intersect1d(bar_octuples, pitch_octuples)
+    else:
+        return range(1, int( len(encoding) / 8 ) - 2)
+
 def controlled_masking(encoding: torch.tensor,
                        attributes: list, 
                        note_percentage_random_mask: int, 
                        mask_idx: int, 
+                       min_pitch:int=None,
+                       max_pitch:int=None,
                        bars=None,
                        new_notes=None):
     '''
@@ -229,6 +324,8 @@ def controlled_masking(encoding: torch.tensor,
             0: bar | 1: position | 2: instrument | 3: pitch | 4: duration | 5: velocity | 6: time signature | 7: tempo 
         note_percentage_random_mask (int): ranging from 0-100, specifies the percentage of notes to mask
         mask_idx (int): encoded value for the <mask> token
+        min_pitch (int): any note below this pitch will be filtered out.
+        max_pitch (int): any note above this pitch will be filtered out.
         bars (list): a list of bars that can be masked, contains either ints representing single bars or tuples containing
             a bar range.
         new_notes (np.ndarray): array containing octuple positions that contain new notes.
@@ -243,11 +340,10 @@ def controlled_masking(encoding: torch.tensor,
     attributes_check(attributes)
 
     # if user specifies bars only mask octuples from those bars
-    if bars:
-        octuples = get_bar_octuples(encoding, bars)
-    else:
-        # mask any octuple minus the start and end tokens
-        octuples = range(1, int( len(encoding) / 8 ) - 2)
+    octuples = filter_octuples(encoding=encoding,
+                               min_pitch=min_pitch,
+                               max_pitch=max_pitch,
+                               bars=bars)
 
     # if new notes have beeen added, prevent masking of those new notes
     if new_notes is not None:
@@ -302,6 +398,8 @@ def vanilla_prediction(roberta_base: MusicBERTModel,
                        reversed_dict: dict,
                        temperature_dict: dict,
                        multinomial_sample: bool,
+                       min_pitch: int=0,
+                       max_pitch: int=np.inf,
                        custom_progress_bar=None,
                        playback_button=None):
     '''
@@ -322,6 +420,8 @@ def vanilla_prediction(roberta_base: MusicBERTModel,
             attribute.
         multinomial_sample (bool): if True, samples attribute from a multinomial distribution
             regardless of temperature value.
+        min_pitch (int): any note BELOW this pitch will be filtered out of variation process.
+        max_pitch (int): any note ABOVE this pitch will be filtered out of variation process.
         custom_progress_bar (customtkinter.CTkProgressBar): if not None, update this progress
             bar.
         playback_button (customtkinter.CTkButton): if not None, update this button on completion.
@@ -332,6 +432,22 @@ def vanilla_prediction(roberta_base: MusicBERTModel,
    
     masked_idxs = [i for i, x in enumerate(encoding.tolist()) if x==mask_idx]
     encoding_dtype = encoding.dtype
+
+    # prepare for pitch filtering
+    pitch_idxs = list(range(*pitch_range(label_dict)))
+
+    # TODO: this is ugly, there will be a better solution that does not use None
+    if min_pitch is not None:
+        min_pitch_idx = min_pitch - MIN_ENCODED_PITCH
+    else:
+        min_pitch_idx = 0
+    
+    if max_pitch is not None:
+        max_pitch_idx = max_pitch - MIN_ENCODED_PITCH
+    else:
+        max_pitch_idx = len(pitch_idxs)
+
+    filtered_pitches_idx = pitch_idxs[:min_pitch_idx] + pitch_idxs[max_pitch_idx+1:]
 
     for i, masked_idx in enumerate(tqdm(masked_idxs)):
         
@@ -351,7 +467,11 @@ def vanilla_prediction(roberta_base: MusicBERTModel,
             temperature = switch_temperature(prev_idx, reversed_dict, temperature_dict)
             if temperature != 1: logits = logits / temperature
 
-            logits = filter_invalid_indexes(logits, prev_idx, label_dict, reversed_dict)
+            logits = filter_invalid_indexes(logits, 
+                                            prev_idx, 
+                                            label_dict, 
+                                            reversed_dict,
+                                            filtered_pitches_idx=filtered_pitches_idx)
             # TODO: investigate top_k performance
 
             logits = top_k_top_p(logits, top_k=5)
@@ -377,8 +497,8 @@ def vanilla_prediction(roberta_base: MusicBERTModel,
     
     return encoding
 
-# TODO: Implement Octuple Prediction
 
+# TODO: new notes not working with bar functionality
 def add_notes(encoding: torch.tensor, new_notes_percentage: int, mask_idx: int):
     '''
     Adds new notes to the song. New notes are added as masked tokens which are then
@@ -499,11 +619,14 @@ def generate_variations(filename: str,
                         variation_percentage: int,
                         attributes: list, 
                         temperature_dict: dict, 
+                        min_pitch:int=None,
+                        max_pitch:int=None,
                         bars=None,
                         bar_level=False,
                         multinomial_sample=False,
                         custom_progress_bars=None,
-                        playback_buttons=None):
+                        playback_buttons=None,
+                        GUI:bool=True):
     '''
     Takes a midi filepath and generates n variations using the MusicBert model over specified
     attributes and controllable temperature.
@@ -522,6 +645,8 @@ def generate_variations(filename: str,
         attributes (list): list containing attributes to vary
         0: bar | 1: position | 2: instrument | 3: pitch | 4: duration | 5: velocity | 6: time signature | 7: tempo
         temperature_dict (dict): dictionary containing temperature values for each attribute
+        min_pitch (int): any note BELOW this pitch will be filtered out of variation process.
+        max_pitch (int): any note ABOVE this pitch will be filtered out of variation process.
         bars (list or None): if None vary over all bars, if a list only vary bars in the list
         bar_level (bool): if True, mask all elements in a bar
         multinomial_sample (bool): if True, samples attribute from a multinomial distribution
@@ -530,6 +655,7 @@ def generate_variations(filename: str,
             bars. FOR USE WITH CUSTOMTKINTER GUI
         playback_buttons (list): if not none, update the status of these buttons.
             FOR USE WITH CUSTOMTKINTER GUI
+        GUI (bool): if True, function is being called through the GUI.
     Returns:
         list: a list containing n variations
     '''
@@ -544,11 +670,23 @@ def generate_variations(filename: str,
     # encode midi file
     encoding = encode_midi_for_musicbert(filename, label_dict)
 
-    # create attribute indexed array
-    attributes = create_attribute_array(attributes)
+    if GUI:
+        # create attribute indexed array
+        attributes = create_attribute_array(attributes)
 
-    # create complete temperture dictionaryc
-    temperature_dict = create_temperature_dict(temperature_dict)
+        # create complete temperture dictionary
+        temperature_dict = create_temperature_dict(temperature_dict)
+
+    # TODO: this is horrible, find a way of not assigning none values to min pitch and max pitch, shouldnt be hard
+    # check max and min pitch values
+    if min_pitch is not None:
+        assert min_pitch >= MIN_ENCODED_PITCH, f"Invalid min pitch value, should range [{MIN_ENCODED_PITCH} - {MAX_ENCODED_PITCH}]"
+    
+    if max_pitch is not None:
+        assert max_pitch <= MAX_ENCODED_PITCH, f"Invalid max pitch value, should range [{MIN_ENCODED_PITCH} - {MAX_ENCODED_PITCH}]"
+
+    if max_pitch is not None and min_pitch is not None:
+        assert min_pitch <= max_pitch, f"min pitch must be less that max pitch"
 
     # create variations list
     variations = []
@@ -566,9 +704,20 @@ def generate_variations(filename: str,
             masked_encoding = controlled_masking(encoding, 
                                                 attributes, 
                                                 note_percentage_random_mask=variation_percentage, 
+                                                min_pitch=min_pitch,
+                                                max_pitch=max_pitch,
                                                 mask_idx=mask_idx,
                                                 bars=bars,
                                                 new_notes=new_notes)
+        if custom_progress_bars is not None:
+            custom_progress_bar = custom_progress_bars[i]
+        else:
+            custom_progress_bar=None
+
+        if playback_buttons is not None:
+            playback_button = playback_buttons[i]
+        else:
+            playback_button = None
 
         # run prediction
         pred_encoding = vanilla_prediction(roberta_base, 
@@ -578,8 +727,10 @@ def generate_variations(filename: str,
                                            reversed_dict, 
                                            temperature_dict,
                                            multinomial_sample,
-                                           custom_progress_bars[i],
-                                           playback_buttons[i])
+                                           min_pitch,
+                                           max_pitch,
+                                           custom_progress_bar,
+                                           playback_button)
 
         variations.append(pred_encoding)
 
@@ -607,7 +758,7 @@ def write_variation(variation, filepath_prefix: str, reversed_dict: dict):
 
 if __name__ == "__main__":
 
-    filename = '../../Indiana Jones_PC_Indiana Jones and the Fate of Atlantis_Crossing.mid'
+    filename = '../Pitch Test.mid'
 
     if not os.path.exists('/home/sjkro1/muzic/musicbert/input0/dict.txt'):
        gen_dictionary("input0/dict.txt")
@@ -616,7 +767,7 @@ if __name__ == "__main__":
        gen_dictionary("label/dict.txt")
 
     roberta_base = MusicBERTModel.from_pretrained('.', 
-        checkpoint_file='checkpoints/checkpoint_last_musicbert_base_w_genre_head.pt'
+        checkpoint_file='../../RhapsodyRefiner/static/Weights/checkpoint_last_musicbert_base_w_genre_head.pt'
     )
 
     roberta_base.eval()
@@ -651,8 +802,8 @@ if __name__ == "__main__":
 
 
     # 0: bar | 1: position | 2: instrument | 3: pitch | 4: duration | 5: velocity | 6: time signature | 7: tempo 
-    attributes = [3, 4]
-    bars = [(0, 0)]
+    attributes = [3]
+    bars = [(1, 3)]
 
     variations = generate_variations(filename=filename, 
                                      n_var=1, 
@@ -660,12 +811,14 @@ if __name__ == "__main__":
                                      label_dict=label_dict, 
                                      reversed_dict=reversed_dict, 
                                      new_notes=False, 
-                                     new_notes_percentage=100, 
+                                     new_notes_percentage=0, 
                                      variation_percentage=50, 
                                      attributes=attributes, 
+                                     min_pitch=588,
                                      temperature_dict=temperature_dict, 
                                      bars=bars, 
-                                     bar_level=True)
+                                     bar_level=False,
+                                     GUI=False)
     
-    write_variation(variations, "outputs/test_bar_level", reversed_dict)
+    write_variation(variations[0], "test.mid", reversed_dict)
 
