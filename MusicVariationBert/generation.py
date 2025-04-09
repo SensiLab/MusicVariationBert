@@ -14,15 +14,13 @@ from MusicVariationBert.utils import (reverse_label_dict,
                                       filter_invalid_indexes, 
                                       top_k_top_p, switch_temperature, 
                                       decode_w_label_dict, 
-                                      pitch_range)
+                                      pitch_range, get_key_notes)
 from MusicVariationBert.musicbert import MusicBERTModel
 
 # TODO: consonnance and disonnance
 # TODO: control likelihood of chromatic note
 # TODO: fill empty bars
-# TODO: visualise MIDI
 # TODO: new notes working with bar range & pitch range
-# TODO: attribute naming - beat division/accent
 
 ATTRIBUTE_INDEXES = {"Bar" : 0,
                      "Position" : 1,
@@ -309,6 +307,40 @@ def filter_octuples(encoding: torch.tensor,
     else:
         return range(1, int( len(encoding) / 8 ) - 2)
 
+def filter_key(probs: torch.tensor,
+               key:str,
+               chromatic_notes: np.ndarray,
+               key_notes: np.ndarray,
+               beta=int) -> torch.tensor:
+    """
+    Function filters key probabilities based off user input.
+    If beta=1/P, where P is the culmative probability of chromatic notes,
+    then only chromatic notes will be played.
+    @author: Stephen Krol
+
+    Args:
+        Probs (torch.tensor): Probability of each pitch from model.
+        key (str): key of the song.
+        beta (int): 0 <= beta <= 1, controls change in proabability for
+            chromatic notes.
+    Returns:
+        torch.tensor: updated probability distribution.
+    """
+
+    chromatic_probs = probs[chromatic_notes]
+    key_probs = probs[key_notes]
+
+    # rescale to be between 0 - 1/P
+    beta = beta*(1/torch.sum(chromatic_probs))
+
+    alpha = (1 - beta*torch.sum(chromatic_probs)) / torch.sum(key_probs)
+
+    # rescale probabilities
+    probs[chromatic_notes] = probs[chromatic_notes]*beta
+    probs[key_notes] = probs[key_notes]*alpha
+
+    return probs
+
 def controlled_masking(encoding: torch.tensor,
                        attributes: list, 
                        note_percentage_random_mask: int, 
@@ -361,7 +393,7 @@ def controlled_masking(encoding: torch.tensor,
                                     replace=False)
     
     for masked_oct in masked_octs:
-        encoding.index_fill_(0, torch.tensor( masked_oct * 8 + attributes ), mask_idx)
+        encoding.index_fill_(0, torch.tensor( masked_oct * 8 + attributes , dtype=torch.int64), mask_idx)
     
     return encoding
 
@@ -407,6 +439,7 @@ def vanilla_prediction(roberta_base: MusicBERTModel,
                        min_pitch: None,
                        max_pitch: None,
                        key:str=None,
+                       beta:int=0,
                        custom_progress_bar=None,
                        playback_button=None):
     '''
@@ -430,6 +463,7 @@ def vanilla_prediction(roberta_base: MusicBERTModel,
         min_pitch (int): any note BELOW this pitch will be filtered out of variation process.
         max_pitch (int): any note ABOVE this pitch will be filtered out of variation process.
         key (str): key of song.
+        beta (int): weighting term, controls likelihood of chromatic note prediction.
         custom_progress_bar (customtkinter.CTkProgressBar): if not None, update this progress
             bar.
         playback_button (customtkinter.CTkButton): if not None, update this button on completion.
@@ -457,6 +491,9 @@ def vanilla_prediction(roberta_base: MusicBERTModel,
 
     filtered_pitches_idx = pitch_idxs[:min_pitch_idx] + pitch_idxs[max_pitch_idx+1:]
 
+    if key is not None:
+        key_notes, chromatic_notes = get_key_notes(key)
+
     for i, masked_idx in enumerate(tqdm(masked_idxs)):
         
         # update progress bar
@@ -479,12 +516,14 @@ def vanilla_prediction(roberta_base: MusicBERTModel,
                                             prev_idx, 
                                             label_dict, 
                                             reversed_dict,
-                                            filtered_pitches_idx=filtered_pitches_idx,
-                                            key=key)
+                                            filtered_pitches_idx=filtered_pitches_idx)
             # TODO: investigate top_k performance
-
-            logits = top_k_top_p(logits, top_k=5)
+            # logits = top_k_top_p(logits, top_k=5)
             probs = torch.softmax(logits, dim=-1)
+            str_encoding = reversed_dict[prev_idx.item()]
+            if str_encoding[1] == '2' and key is not None:
+                probs = filter_key(probs, key, chromatic_notes, key_notes, beta)
+
             if probs.dim() == 1:
                 probs = probs.unsqueeze(0)
 
@@ -631,6 +670,7 @@ def generate_variations(filename: str,
                         min_pitch:int=None,
                         max_pitch:int=None,
                         key:str=None,
+                        beta:int=0,
                         bars=None,
                         bar_level=False,
                         multinomial_sample=False,
@@ -658,6 +698,7 @@ def generate_variations(filename: str,
         min_pitch (int): any note BELOW this pitch will be filtered out of variation process.
         max_pitch (int): any note ABOVE this pitch will be filtered out of variation process.
         key (str): key of song.
+        beta (int): weighting term, controls likelihood of chromatic note prediction.
         bars (list or None): if None vary over all bars, if a list only vary bars in the list
         bar_level (bool): if True, mask all elements in a bar
         multinomial_sample (bool): if True, samples attribute from a multinomial distribution
@@ -741,6 +782,7 @@ def generate_variations(filename: str,
                                            min_pitch,
                                            max_pitch,
                                            key,
+                                           beta,
                                            custom_progress_bar,
                                            playback_button)
 
@@ -794,9 +836,9 @@ if __name__ == "__main__":
     temp_bar = 1
     temp_pos = 1
     temp_ins = 1
-    temp_pitch = 3
+    temp_pitch = 2
     temp_dur = 1
-    temp_vel = 3 
+    temp_vel = 1
     temp_sig = 1
     temp_tempo = 1
 
@@ -824,7 +866,8 @@ if __name__ == "__main__":
                                      reversed_dict=reversed_dict, 
                                      new_notes=False, 
                                      new_notes_percentage=0, 
-                                     variation_percentage=100, 
+                                     variation_percentage=50, 
+                                     multinomial_sample=True,
                                      attributes=attributes, 
                                      key='C Major',
                                      temperature_dict=temperature_dict, 

@@ -45,8 +45,6 @@ NOTE_TO_TOKEN = {
     "D#": 520,
     "Eb": 520,  # Enharmonic equivalent of D#
     "E": 521,
-    "Fb": 521,  # Enharmonic equivalent of E
-    "E#": 522,  # Enharmonic equivalent of F
     "F": 522,  
     "F#": 523,
     "Gb": 523,  # Enharmonic equivalent of F#
@@ -56,42 +54,41 @@ NOTE_TO_TOKEN = {
     "A": 526,
     "A#": 527,
     "Bb": 527,  # Enharmonic equivalent of A#
-    "B": 528,
-    "Cb": 528,  # Enharmonic equivalent of B
-    "B#": 529   # Enharmonic equivalent of C in the next octave
+    "B": 528
 }
 
+# not always accurate in convention but practicle for this program
 KEYS = {
     "C Major": ['C', 'D', 'E', 'F', 'G', 'A', 'B'],
-    "C# Major": ['C#', 'D#', 'E#', 'F#', 'G#', 'A#', 'B#'],
+    "C# Major": ['C#', 'D#', 'F', 'F#', 'G#', 'A#', 'C'],
     "D Major": ['D', 'E', 'F#', 'G', 'A', 'B', 'C#'],
     "E Major": ['E', 'F#', 'G#', 'A', 'B', 'C#', 'D#'],
     "F Major": ['F', 'G', 'A', 'Bb', 'C', 'D', 'E'],
-    "F# Major": ['F#', 'G#', 'A#', 'B', 'C#', 'D#', 'E#'],
+    "F# Major": ['F#', 'G#', 'A#', 'B', 'C#', 'D#', 'F'],
     "G Major": ['G', 'A', 'B', 'C', 'D', 'E', 'F#'],
     "A Major": ['A', 'B', 'C#', 'D', 'E', 'F#', 'G#'],
     "B Major": ['B', 'C#', 'D#', 'E', 'F#', 'G#', 'A#'],
-    "Cb Major": ['Cb', 'Db', 'Eb', 'Fb', 'Gb', 'Ab', 'Bb'],
+    "Cb Major": ['B', 'Db', 'Eb', 'E', 'Gb', 'Ab', 'Bb'],
     "Db Major": ['Db', 'Eb', 'F', 'Gb', 'Ab', 'Bb', 'C'],
     "Eb Major": ['Eb', 'F', 'G', 'Ab', 'Bb', 'C', 'D'],
-    "Gb Major": ['Gb', 'Ab', 'Bb', 'Cb', 'Db', 'Eb', 'F'],
+    "Gb Major": ['Gb', 'Ab', 'Bb', 'B', 'Db', 'Eb', 'F'],
     "Ab Major": ['Ab', 'Bb', 'C', 'Db', 'Eb', 'F', 'G'],
     "Bb Major": ['Bb', 'C', 'D', 'Eb', 'F', 'G', 'A'],
     "A Minor": ['A', 'B', 'C', 'D', 'E', 'F', 'G'],
-    "A# Minor": ['A#', 'B#', 'C#', 'D#', 'E#', 'F#', 'G#'],
+    "A# Minor": ['A#', 'C', 'C#', 'D#', 'F', 'F#', 'G#'],
     "B Minor": ['B', 'C#', 'D', 'E', 'F#', 'G', 'A'],
     "C Minor": ['C', 'D', 'Eb', 'F', 'G', 'Ab', 'Bb'],
     "C# Minor": ['C#', 'D#', 'E', 'F#', 'G#', 'A', 'B'],
     "D Minor": ['D', 'E', 'F', 'G', 'A', 'Bb', 'C'],
-    "D# Minor": ['D#', 'E#', 'F#', 'G#', 'A#', 'B', 'C#'],
+    "D# Minor": ['D#', 'F', 'F#', 'G#', 'A#', 'B', 'C#'],
     "E Minor": ['E', 'F#', 'G', 'A', 'B', 'C', 'D'],
     "F Minor": ['F', 'G', 'Ab', 'Bb', 'C', 'Db', 'Eb'],
     "F# Minor": ['F#', 'G#', 'A', 'B', 'C#', 'D', 'E'],
     "G Minor": ['G', 'A', 'Bb', 'C', 'D', 'Eb', 'F'],
     "G# Minor": ['G#', 'A#', 'B', 'C#', 'D#', 'E', 'F#'],
     "Bb Minor": ['Bb', 'C', 'Db', 'Eb', 'F', 'Gb', 'Ab'],
-    "Eb Minor": ['Eb', 'F', 'Gb', 'Ab', 'Bb', 'Cb', 'Db'],
-    "Ab Minor": ['Ab', 'Bb', 'Cb', 'Db', 'Eb', 'Fb', 'Gb']
+    "Eb Minor": ['Eb', 'F', 'Gb', 'Ab', 'Bb', 'B', 'Db'],
+    "Ab Minor": ['Ab', 'Bb', 'B', 'Db', 'Eb', 'E', 'Gb']
 }
 
 def bar_range(label_dict): return label_dict.index(BAR_START), label_dict.index(BAR_END)+1
@@ -123,28 +120,36 @@ def get_key_notes(key: str) -> Tuple[list, list]:
         list: list of notes in the key.
         list: list of notes not in key.
     """
+
+    if key is None:
+      return None, None
     
     assert key in KEYS, f'{key} not valid.'
 
-    possible_notes = np.array(range(517, 530))
+    possible_notes = np.array(range(517, 529))
 
     key_notes = [NOTE_TO_TOKEN[note] for note in KEYS[key]]
     chromatic_notes = np.setdiff1d(possible_notes, key_notes)
-
     all_chromatic_notes = []
 
+    # -2 -> 8
     for i in range(11):
-        for note in chromatic_notes:
-            all_chromatic_notes.append(note + i*12)
+      for note in chromatic_notes:
+        all_chromatic_notes.append(note + i*12)
+    
+    all_key_notes = []
 
-    return key_notes, all_chromatic_notes
+    for i in range(11):
+      for note in key_notes:
+         all_key_notes.append(note + i*12)
+
+    return all_key_notes, all_chromatic_notes
 
 def filter_invalid_indexes(logits, 
                            prev_index, 
                            label_dict, 
                            rev_inv_map, 
                            filtered_pitches_idx:list,
-                           key:str = None,
                            filter_value=-float('Inf')):
   """ Filter a distribution of logits using prev_predicted token 
         Args:
@@ -203,15 +208,24 @@ def filter_invalid_indexes(logits,
       logits[filtered_pitches_idx] = filter_value
     
     # filter out chromatic pitches
-    if key is not None:
-      _, chromatic_notes = get_key_notes(key)
-      logits[chromatic_notes] = filter_value
+    # if key is not None:
+    #   key_notes, chromatic_notes = get_key_notes(key)
+      # logits[chromatic_notes] = filter_value
+      # chormatic_logits = logits[chromatic_notes]
+      # key_logits = logits[key_notes]
     
     # filter out percussive pitches
     percussion_idxs = [i for i in range(MAX_PITCH+1, MAX_PITCH+129)]
     logits[percussion_idxs] = filter_value
 
-    print(logits[list(range(*pitch_range(label_dict)))])
+    # probs = torch.softmax(logits, dim=-1)
+    # key_probs = probs[key_notes]
+    # chromatic_probs = probs[chromatic_notes]
+    # pitch_probs = probs[list(range(*pitch_range(label_dict)))]
+    # top5 = np.argpartition(key_probs, -5)[-5:]
+    # print(f'Keys: {np.sort(key_probs[top5])}')
+    # top5 = np.argpartition(chromatic_probs, -5)[-5:]
+    # print(f'Chromatics: {np.sort(chromatic_probs[top5])}')
 
   # pitch
   elif(str_encoding[1] == '3'):
