@@ -150,6 +150,7 @@ def filter_invalid_indexes(logits,
                            label_dict, 
                            rev_inv_map, 
                            filtered_pitches_idx:list,
+                           invalid_bars:list=None,
                            filter_value=-float('Inf')):
   """ Filter a distribution of logits using prev_predicted token 
         Args:
@@ -157,7 +158,7 @@ def filter_invalid_indexes(logits,
             prev_index: previous predicted token 
             label_dict : dictionary mapping string octuple encodings to indices 
             filtered_pitches_idx (list): indexes of pitches to be filtered
-            key (str): key of the song.
+            invalid_bars (list): indexes for invalid bars
       Returns: filtered logits according to prev_idx 
 
       @author: midiformers
@@ -264,6 +265,7 @@ def filter_invalid_indexes(logits,
     logits[list(range(*vel_range(label_dict)))] = filter_value
     logits[list(range(*sig_range(label_dict)))] = filter_value
   # tempo
+  # TODO: include after starting token
   elif(str_encoding[1] == '7'):
     logits[list(range(*pos_range(label_dict)))] = filter_value
     logits[list(range(*ins_range(label_dict)))] = filter_value
@@ -273,8 +275,10 @@ def filter_invalid_indexes(logits,
     logits[list(range(*sig_range(label_dict)))] = filter_value
     logits[list(range(*tempo_range(label_dict)))] = filter_value
 
-
-
+    # filter invalid bars
+    if invalid_bars is not None:
+      logits[invalid_bars] = filter_value
+  
   return logits 
 
 def top_k_top_p(logits_batch, top_k=0, top_p=0.0, filter_value=-float('Inf')):
