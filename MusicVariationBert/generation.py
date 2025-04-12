@@ -19,8 +19,7 @@ from MusicVariationBert.utils import (reverse_label_dict,
 from MusicVariationBert.musicbert import MusicBERTModel
 
 # TODO: consonnance and disonnance
-# TODO: fill empty bars
-# TODO: new notes working with bar range & pitch range
+# TODO: fill empty bars (current)
 # TODO: new notes when no notes in song
 
 ATTRIBUTE_INDEXES = {"Bar" : 0,
@@ -178,30 +177,40 @@ def get_bar_idxs(encoding: torch.tensor, bar_start: int, bar_end: int):
     assert bar_end >= 0 and bar_end < 255, "End bar must be between 0 and 255"
     assert bar_start <= bar_end, "Start of bar must be less than end of bar"
 
+    max_track_bar = int(encoding[-16]) # final note bar ocutple
+
     # bar encodings start from 4 - 259 representing <0-0> -> <0-255>
     bar_start_encoding, bar_end_encoding = bar_to_encoding(bar_start), bar_to_encoding(bar_end)
+
+    assert bar_start_encoding <= max_track_bar, f"{bar_start} out of range."
+    assert bar_end_encoding <= max_track_bar, f"{bar_end} out of range."
 
     start_idx = None
     end_idx = None
 
     # find first instance of bar start encoding
-    for i, encoded_event in enumerate(encoding):
+    for i in range(0, len(encoding), 8):
+        encoded_event = encoding[i]
         if encoded_event.item() == bar_start_encoding:
             start_idx = i
             break
+        elif encoded_event.item() < bar_start_encoding:
+            start_idx = i # next best option, last octuple of last bar
+        else:
+            break # exit if gone beyond start bar
     
     # find first instance of bar end encocding
-    for i, encoded_event in reversed(list(enumerate(encoding))):
+    for i in reversed(range(0, len(encoding)-8, 8)):
+        encoded_event = encoding[i]
+
         if encoded_event.item() == bar_end_encoding:
             end_idx = i + 7 # include all info from octuple
             break
-    
-    # check that both start and end has been found, if not, raise a value error
-    # TODO: a bar can exist even with no note in it
-    if start_idx is None:
-        raise ValueError(f'Provided start bar: {bar_start} is out of bar range for this song')
-    elif end_idx is None:
-        raise ValueError(f'Provided end bar: {bar_end} is out of bar range for this song')
+        elif encoded_event.item() > bar_end_encoding:
+            end_idx = i - 1 # set to previous octuple end, will only return if end bar is empty
+        else:
+            break # exit if beyond end bar
+
 
     return start_idx, end_idx
 
@@ -546,6 +555,7 @@ def vanilla_prediction(roberta_base: MusicBERTModel,
     filtered_pitches_idx = pitch_idxs[:min_pitch_idx] + pitch_idxs[max_pitch_idx+1:]
 
     # KEY FILTERING
+    print(key)
     if key is not None:
         key_notes, chromatic_notes = get_key_notes(key)
 
@@ -578,7 +588,7 @@ def vanilla_prediction(roberta_base: MusicBERTModel,
                                             filtered_pitches_idx=filtered_pitches_idx,
                                             invalid_bars=invalid_bars)
             # TODO: investigate top_k performance
-            # logits = top_k_top_p(logits, top_k=5)
+            logits = top_k_top_p(logits, top_k=5)
             probs = torch.softmax(logits, dim=-1)
             str_encoding = reversed_dict[prev_idx.item()]
             if str_encoding[1] == '2' and key is not None:
@@ -636,6 +646,7 @@ def get_total_bars(encoding: torch.tensor, bars:list=None):
         return total_bars, total_notes
 
 # TODO: ensure perctange of new notes based off available octuples in bar range
+# TODO: if no bar range then spread evenly
 def add_notes(encoding: torch.tensor, 
               new_notes_percentage: int, 
               mask_idx: int,
@@ -684,13 +695,14 @@ def add_notes(encoding: torch.tensor,
 
     masked_octs = []
     # iterate through each bar and randomly select octuples
+    # TODO: fix empty bars, currently need to see if you can work with new solution
+    # is the start_idx already covered? probably, empty bars will have new notes in them
+    # so need to find their indexes
     for i, bar in enumerate(bars):
         start_idx, end_idx = get_bar_idxs(encoding, bar, bar)
         shift = (i*n_new_per_bar*8) # compensate for added new notes
         start_octuple = int((shift+start_idx)/8)
-        end_octuple = int((shift+end_idx+1)/8) + n_new_per_bar
-
-        print(list(range(start_octuple, end_octuple)))
+        end_octuple = int((shift+end_idx+1)/8) #+ n_new_per_bar
 
         masked_oct = np.random.choice( a = range(start_octuple, end_octuple+n_new_per_bar) , \
                     size = n_new_per_bar, \
@@ -699,6 +711,7 @@ def add_notes(encoding: torch.tensor,
         
         for oct in masked_oct:
             new_encoding[oct*8 : (oct+1)*8] = mask_idx
+
         new_encoding[masked_oct*8] = bar_to_encoding(bar)
         new_encoding[(masked_oct*8)+2] = instrument
 
@@ -717,7 +730,6 @@ def add_notes(encoding: torch.tensor,
     if len(new_encoding) % 8 != 0:
         raise ValueError("Encoding not divisible by 8")
     
-    print(new_encoding)
 
     return new_encoding, masked_octs
 
@@ -835,7 +847,6 @@ def generate_variations(filename: str,
     # TODO: add assertion that all instruments are the same
     # encode midi file
     encoding = encode_midi_for_musicbert(filename, label_dict)
-    print(encoding)
 
     if GUI:
         # create attribute indexed array
@@ -929,7 +940,7 @@ def write_variation(variation, filepath_prefix: str, reversed_dict: dict):
 if __name__ == "__main__":
 
 
-    filename = '../empty_bar_test.mid'
+    filename = '../Pitch Test.mid'
 
     if not os.path.exists('/home/sjkro1/muzic/musicbert/input0/dict.txt'):
        gen_dictionary("input0/dict.txt")
@@ -951,7 +962,7 @@ if __name__ == "__main__":
     temp = 1 
 
     temp_bar = 1
-    temp_pos = 1
+    temp_pos = 2
     temp_ins = 1
     temp_pitch = 2
     temp_dur = 1
@@ -983,8 +994,8 @@ if __name__ == "__main__":
                                      label_dict=label_dict, 
                                      reversed_dict=reversed_dict, 
                                      new_notes=True, 
-                                     new_notes_percentage=50, 
-                                     variation_percentage=0, 
+                                     new_notes_percentage=10, 
+                                     variation_percentage=50, 
                                      multinomial_sample=True,
                                      attributes=attributes, 
                                      key='C Major',
