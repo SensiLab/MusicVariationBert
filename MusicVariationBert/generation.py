@@ -357,8 +357,13 @@ def filter_key(probs: torch.tensor,
     chromatic_probs = probs[chromatic_notes]
     key_probs = probs[key_notes]
 
-    # rescale to be between 0 - 1/P
-    beta = beta*(1/torch.sum(chromatic_probs))
+    chromatic_cumulative = torch.sum(chromatic_probs)
+    if chromatic_cumulative == 0:
+        beta=0
+    else:
+        # rescale to be between 0 - 1/P
+        beta = beta*(1/torch.sum(chromatic_probs))
+    
 
     alpha = (1 - beta*torch.sum(chromatic_probs)) / torch.sum(key_probs)
 
@@ -588,8 +593,8 @@ def vanilla_prediction(roberta_base: MusicBERTModel,
                                             filtered_pitches_idx=filtered_pitches_idx,
                                             invalid_bars=invalid_bars)
             # TODO: investigate top_k performance
-            logits = top_k_top_p(logits, top_k=5)
             probs = torch.softmax(logits, dim=-1)
+            # probs = top_k_top_p(probs, top_k=5, filter_value=0)
             str_encoding = reversed_dict[prev_idx.item()]
             if str_encoding[1] == '2' and key is not None:
                 probs = filter_key(probs, key, chromatic_notes, key_notes, beta)
