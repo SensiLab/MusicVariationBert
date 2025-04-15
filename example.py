@@ -100,19 +100,21 @@ bars = None
 
 
 #### GENERATE VARIATIONS ####
-generate_variations(filename=filename, 
-                    n_var=n_var, 
-                    roberta_base=roberta_base,
-                    label_dict=label_dict,
-                    reversed_dict=reversed_dict,
-                    new_notes=new_notes,
-                    new_notes_percentage=new_notes_percentage,
-                    variation_percentage=variation_percentage,
-                    attributes=attributes, 
-                    temperature_dict=temperature_dict, 
-                    min_pitch=min_pitch,
-                    max_pitch=max_pitch,
-                    key=key,
-                    beta=beta,
-                    bars=None,
-                    multinomial_sample=True)
+variations = generate_variations(filename=filename, 
+                                n_var=n_var, 
+                                roberta_base=roberta_base,
+                                label_dict=label_dict,
+                                reversed_dict=reversed_dict,
+                                new_notes=new_notes,
+                                new_notes_percentage=new_notes_percentage,
+                                variation_percentage=variation_percentage,
+                                attributes=attributes, 
+                                temperature_dict=temperature_dict, 
+                                min_pitch=min_pitch,
+                                max_pitch=max_pitch,
+                                key=key,
+                                beta=beta,
+                                bars=None,
+                                multinomial_sample=True)
+
+write_variation(variations[0], "ENTER NAME.mid", reversed_dict) # write one variation, 
