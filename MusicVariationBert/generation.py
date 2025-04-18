@@ -155,8 +155,6 @@ def bar_to_encoding(bar: int) -> Tuple[int, int]:
 
     return bar + 4
 
-
-
 def get_bar_idxs(encoding: torch.tensor, bar_start: int, bar_end: int):
     '''
     Function takes an encoding vector and finds the indices that correspond to the bars in
@@ -461,7 +459,6 @@ def bar_level_masking(encoding: torch.tensor,
 
     return encoding
 
-
 def get_invalid_bars(bars: list) -> list:
     """
     Function takes valid prediction bars from user and 
@@ -683,6 +680,7 @@ def add_notes(encoding: torch.tensor,
     else: bars = get_total_bars(encoding, bars)[0]
 
     n_bars = len(bars)
+    max_bar = int(encoding[-16] - 4) + 1
 
     # caluclate new notes per bar
     n_new_per_bar = n_new_octuples // n_bars
@@ -709,9 +707,14 @@ def add_notes(encoding: torch.tensor,
         start_octuple = int((shift+start_idx)/8)
         end_octuple = int((shift+end_idx+1)/8) #+ n_new_per_bar
 
-        masked_oct = np.random.choice( a = range(start_octuple, end_octuple+n_new_per_bar) , \
-                    size = n_new_per_bar, \
-                    replace = False)
+        if bar != max_bar-1:
+            masked_oct = np.random.choice( a = range(start_octuple, end_octuple+n_new_per_bar) , \
+                        size = n_new_per_bar, \
+                        replace = False)
+        else:
+            masked_oct = np.random.choice( a = range(start_octuple, end_octuple+n_new_per_bar-1) , \
+                        size = n_new_per_bar, \
+                        replace = False)
         masked_octs.append(masked_oct)
         
         for oct in masked_oct:
@@ -721,16 +724,19 @@ def add_notes(encoding: torch.tensor,
         new_encoding[(masked_oct*8)+2] = instrument
 
     masked_octs = np.concatenate(masked_octs)
-
+    print(len(encoding))
     # fill new encoding vector
     i = 0
     for j in range(len(new_encoding)):
-
         if new_encoding[j] !=0:
             continue
         else:
             new_encoding[j] = encoding[i].type(new_encoding.dtype)
             i += 1
+            if i == len(encoding):
+                new_encoding = new_encoding[0:j+1]
+                print(new_encoding)
+                break
 
     if len(new_encoding) % 8 != 0:
         raise ValueError("Encoding not divisible by 8")
